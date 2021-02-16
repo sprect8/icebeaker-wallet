@@ -11,23 +11,35 @@ Basic UI ... seriously basic UI
 1. It will check if you have metamask, if not it will ask you to install
 2. Click connect to connect the wallet
 3. Click Tip Friend who has a wallet to send some eth (send 0.1). You will send to my wallet [0x8218bC91354b2AB329eCF20B90751Fc9345e8C96](https://testnet.bscscan.com/address/0x8218bc91354b2ab329ecf20b90751fc9345e8c96)
+4. Click Tip Friend who doesn't have a wallet and it will deploy the amount you tip into ESCROW [0x98bdde79a19264e01c44fef8b7471210bd7fc802](https://testnet.bscscan.com/address/0x98bdde79a19264e01c44fef8b7471210bd7fc802#internaltx)
+5. Once deployed the UI will have a "Claim Tip" button that indicates you have a tip. This works using the current users' email address; hashed, to look up in the smart contract
+6. Only the deployer of the contract can access the smart contract to claim the tip. This is done via API call "connectWallet" which will connect a users' wallet to their email address (if not associated) and automatically redeem the tip as well
 
-# Using the code
-A fair bit of work to do
-1. I assume user registration is done, and a user can start using the app now
-2. Capture user email; and when they connect the wallet, also capture their wallet
-3. When displaying the message (with tip option), for the user sending the tip, include the wallet
-4. If the user doesn't have a wallet, include users' email address but no wallet (I will send to Escrow account)
-5. When a user (A) tips another user (B), we record the tip, tip amount, and A tipped B. 
-6. When B logs in, if B does not have an account, they can click connect and register. Then they can claim the tip
-7. When B logs in, if B has an account, we display the amount tipped and the transaction that it happened on
+# APIs and helpers
+1. pages/api/tipsPending: call this to find out if there are tips pending for a user's email address. Encourage users to register a wallet
+2. pages/api/connectWallet: call this to connect a wallet to a users' email address (if user has not connected yet)
+3. lib/tipsService: service from the front end that calls the APIs
 
-UI Extensions  
-- A button to be added to the screen that will connect a users' wallet and save that wallet to the backend along with user email
-- Functionality that will update the backend database when user clicks connect wallet
-- Functionality that will allow a user to claim the tip 
+# Components
+1. Web3Container: self-contained container for web3 services. It will manage the setup of the web3 libraries and connections
+2. App.js: most of  the business logic is here
 
-Backend Extensions
-- Handle cases where the user does not have a wallet, we must send to ESCROW
-- Handle complex case when user wants to send ERC20 tokens instead (NOTE: this is really hard ... do we do atomic swap against Ethereum Main net, or only coins inside BSC Testnet?)
+# Process Flow
+1. Connect Wallet
+2. Tip (with existing wallet)
+3. Tip (for claiming)
+4. Click Claim (you can claim your own tip)
+
+# Configuration
+1. Deploying a new Smart Contract, you need to configure the .secret file in the root directory (with truffle-config.js). This is used to deploy the smart contracts  
+   .secret contains the PRIVATE KEY of your wallet
+   ```
+   > truffle compile
+   > truffle migrate --network binance --reset
+   ```
+   Everything else is managed for you once you deploy it. Make sure the funding account has some BNB
+   
+2. Configuring the .env.local file  
+   BINANCE_ENDPOINT=https://data-seed-prebsc-1-s1.binance.org:8545/  
+   BINANCE_SECRET_KEY= your PRIVATE KEY 
 

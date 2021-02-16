@@ -1,8 +1,9 @@
-import Web3 from "web3";
 import React, { useEffect } from "react";
 import style from './App.module.css';
 import { Button, Card, CardActions, CardContent, makeStyles, Snackbar, Typography } from "@material-ui/core";
 import CircularProgress from '@material-ui/core/CircularProgress';
+import Web3Container from "../lib/Web3Container";
+import { getPendingTips, connectWallet } from "../lib/tipsService";
 
 const useStyles = makeStyles({
   root: {
@@ -22,40 +23,6 @@ const useStyles = makeStyles({
 });
 
 /**
- * Check if metamask (or browser-based wallet) is installed
- * 
- * @returns whether wallet is installed. If not display a message for user to install
- */
-function isWalletInstalled() {
-  if (!window.ethereum) {
-    return false;
-  }
-  return true;
-}
-
-/**
- * Call this function when the user clicks connect wallet. 
- * The workflow for login/registration is to first connect the users' wallet
- * 
- * This function throws an exception if something went wrong, or if the chain id
- * is not Binance Testnet (chainId = 0x61)
- * 
- * @returns selected address (public key) from metamask
- */
-async function connect() {
-  window.web3 = new Web3(window.ethereum);
-  await window.ethereum.enable();
-  const chainId = await window.web3.eth.getChainId();
-  if (chainId !== 0x61) {
-    throw new Error("Chain ID must be set to the BSC TestNet - ChainId 0x61");
-  }
-  const coinbase = await window.web3.eth.getCoinbase();
-
-  console.log(await window.web3.eth.getBalance(coinbase));
-  return coinbase;
-}
-
-/**
  * Tip a friend; if the friend has a wallet, tip directly, otherwise
  * hash (sha) their email address and send to escrow service. The friend
  * can claim when they login (will notify them to claim the token)
@@ -65,10 +32,10 @@ async function connect() {
  * @param {JSON} token - the token to which to send
  * @param {String} wallet - my wallet to send from
  */
-async function tipFriend({ friend, amount, token, wallet }) {
+async function tipFriend({ friend, amount, contract, wallet, web3 }) {
   console.log(amount);
   if (friend.wallet) {
-    await window.web3.eth.sendTransaction({
+    await web3.eth.sendTransaction({
       from: wallet,
       to: friend.wallet,
       value: amount
@@ -81,53 +48,39 @@ async function tipFriend({ friend, amount, token, wallet }) {
   else {
     // send to escrow account (smart contract)
     // to be continued
+    console.log("No address, so we will send a tip to the escrow service");
+    const result = await contract.methods.deposit(web3.utils.soliditySha3(friend.email)).send({ from: wallet, value: amount });
+    console.log(result);
   }
 }
 
 /**
- * This is the function that you should have already created which helps to authenticate
- * a user using google login. Please also save the wallet address along with the user details
+ * This function is called to simulate registering your wallet ideally you call 
+ * this when the user wants to register their wallet; it will also help claim 
+ * some tips if they have any 
  * 
- * @param {String} wallet - the wallet address to be saved along with the google email
+ * @param {String} wallet - wallet to be registered
  */
-async function signInWithGoogle({ wallet }) {
-  console.log("Sign in completed", wallet);
+async function registerWalletToClaim(wallet) {
+  connectWallet(wallet);
 }
 
-function App() {
+function App(props) {
   const classes = useStyles();
-  const [walletInstalled, setWalletInstalled] = React.useState(false);
-  const [wallet, setWallet] = React.useState("");
+  const [wallet, setWallet] = React.useState(props.accounts && props.accounts[0]);
   const [open, setOpened] = React.useState(false);
   const [inProgress, setInProgress] = React.useState(false);
 
+  const [pendingTips, setPendingTips] = React.useState(false);
+
   useEffect(e => {
-    setWalletInstalled(isWalletInstalled());
+    // poll the pending tips
+    window.setInterval(async e => {
+      const result = await getPendingTips();
+      setPendingTips(+result.pending);
+    }, 15000);
   });
 
-  if (!walletInstalled) {
-    return (
-      <div className={style.App}>
-        <header className={style.Appheader}>
-          <a href="https://metamask.io/">Please install Metamask</a>
-        </header>
-      </div>
-    );
-  }
-  if (wallet === "") {
-    return (
-      <div className={style.App}>
-        <header className={style.Appheader}>
-          <CircularProgress style={{ display: inProgress ? "block" : "none" }} />
-          <Button variant="contained" onClick={async e => {
-            setInProgress(true);
-            setWallet(await connect());
-            setInProgress(false);
-          }}>Connect Wallet</Button>
-        </header>
-      </div>
-    );
-  }
   return (
     <div className={style.App}>
       <Snackbar
@@ -140,6 +93,12 @@ function App() {
       />
       <header className={style.Appheader}>
         <CircularProgress style={{ display: inProgress ? "block" : "none" }} />
+        <Button
+          variant="contained"
+          style={{ display: pendingTips ? "block" : "none" }}
+          onClick={e => registerWalletToClaim(wallet)}>
+          Claim your Tips!
+        </Button>
         <Typography variant="body1">Connected: {wallet}</Typography>
         <Card className={classes.root}>
           <CardContent>
@@ -157,8 +116,9 @@ function App() {
                   wallet: "0x8218bC91354b2AB329eCF20B90751Fc9345e8C96", // hard coded value
                   email: "email@email.com",
                 },
-                amount: window.web3.utils.toWei(amount, "ether"),
+                amount: props.web3.utils.toWei(amount, "ether"),
                 wallet,
+                web3: props.web3
               });
               setInProgress(false);
               setOpened(true);
@@ -173,8 +133,22 @@ function App() {
             </Typography>
           </CardContent>
           <CardActions>
-            <Button variant="small" onClick={e => alert("To Be Created")}>Tip - Friend does not have Wallet</Button>
-
+            <Button size="small" onClick={async e => {
+              const amount = window.prompt("Enter amount of BNB to send");
+              if (!amount || amount === "") return;
+              setInProgress(true);
+              await tipFriend({
+                friend: {
+                  email: "email@email.com",
+                },
+                amount: props.web3.utils.toWei(amount, "ether"),
+                wallet,
+                web3: props.web3,
+                contract: props.contract
+              });
+              setInProgress(false);
+              setOpened(true);
+            }}>Tip - Friend does not have Wallet</Button>
           </CardActions>
         </Card>
       </header>
@@ -182,4 +156,13 @@ function App() {
   );
 }
 
-export default App;
+const Container = () => {
+  return (<Web3Container
+    renderLoading={() => <div>Loading Dapp Page...</div>}
+    render={({ web3, accounts, contract }) => (
+      <App accounts={accounts} contract={contract} web3={web3} />
+    )}
+  />);
+};
+
+export default Container;

@@ -1,9 +1,6 @@
 import React from 'react';
-import ReactDOM from 'react-dom';
-import style from './index.module.css';
 import App from './App';
 import Head from 'next/head'
-import { Container } from '@material-ui/core';
 
 
 export default function Home() {
